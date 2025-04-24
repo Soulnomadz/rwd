@@ -1,0 +1,47 @@
+use crate::types::question::{Question, QuestionId};
+use crate::types::answer::{Answer, AnswerId};
+
+
+use std::{
+  sync::Arc,
+  collections::HashMap,
+};
+
+use parking_lot::RwLock;
+
+#[derive(Clone, Debug)]
+pub struct Store {
+    pub questions: Arc<RwLock<HashMap<QuestionId, Question>>>,
+    pub answers: Arc<RwLock<HashMap<AnswerId, Answer>>>,
+}
+
+impl Store {
+    pub fn new() -> Self {
+        Store {
+            //questions: HashMap::new(),
+            questions: Arc::new(RwLock::new(Self::init())),
+            answers: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    //fn init(self) -> Self {
+    //let question = Question::new(
+    //    QuestionId::from_str("1").expect("No id provided"),
+    //    "First question".to_string(),
+    //    "Content of question 1".to_string(),
+    //    Some(vec!["faq".to_string(), "rust".to_string()]),
+    //);
+
+    //self.add_question(question)
+    //}
+
+    pub fn init() -> HashMap<QuestionId, Question> {
+        let file = include_str!("../questions.json");
+        serde_json::from_str(file).expect("can't read questions.json")
+    }
+
+    pub fn add_question(mut self, question: Question) -> Self {
+        self.questions.write().insert(question.id.clone(), question);
+        self
+    }
+}

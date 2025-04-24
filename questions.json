@@ -1,0 +1,11 @@
+{
+  "1": {
+    "id": 1,
+    "title": "First question",
+    "content": "Content of question 1",
+    "tags": [
+      "faq",
+      "rust"
+    ]
+  }
+}

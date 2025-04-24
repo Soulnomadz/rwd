@@ -1,0 +1,386 @@
+use std::{
+    collections::HashMap,
+    fmt,
+    //    io::{Error, ErrorKind},
+    //    str::FromStr,
+    sync::Arc,
+};
+
+use parking_lot::RwLock;
+
+use warp::{
+    Filter, Rejection, Reply,
+    filters::body::BodyDeserializeError,
+    filters::cors::CorsForbidden,
+    http::{Method, Response, StatusCode},
+    reject::Reject,
+};
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone)]
+struct Store {
+    questions: Arc<RwLock<HashMap<QuestionId, Question>>>,
+    answers: Arc<RwLock<HashMap<AnswerId, Answer>>>,
+}
+
+impl Store {
+    fn new() -> Self {
+        Store {
+            //questions: HashMap::new(),
+            questions: Arc::new(RwLock::new(Self::init())),
+            answers: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    //fn init(self) -> Self {
+    //let question = Question::new(
+    //    QuestionId::from_str("1").expect("No id provided"),
+    //    "First question".to_string(),
+    //    "Content of question 1".to_string(),
+    //    Some(vec!["faq".to_string(), "rust".to_string()]),
+    //);
+
+    //self.add_question(question)
+    //}
+
+    fn init() -> HashMap<QuestionId, Question> {
+        let file = include_str!("../questions.json");
+        serde_json::from_str(file).expect("can't read questions.json")
+    }
+
+    fn add_question(mut self, question: Question) -> Self {
+        self.questions.write().insert(question.id.clone(), question);
+        self
+    }
+}
+
+#[derive(Debug)]
+enum Error {
+    ParseError(std::num::ParseIntError),
+    MissingParameters,
+    IndexError,
+    QuestionNotFound,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            Error::ParseError(ref err) => write!(f, "cannot parse parameter: {}", err),
+            Error::MissingParameters => write!(f, "missing parameter"),
+            Error::IndexError => write!(f, "bad index for start or end"),
+            Error::QuestionNotFound => write!(f, "question not found"),
+        }
+    }
+}
+
+impl Reject for Error {}
+
+#[derive(Debug)]
+struct Pagination {
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct Question {
+    id: QuestionId,
+    title: String,
+    content: String,
+    tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+struct QuestionId(String);
+
+//impl Question {
+//    fn new(id: QuestionId, title: String, content: String, tags: Option<Vec<String>>) -> Self {
+//        Question {
+//            id,
+//            title,
+//            content,
+//            tags,
+//        }
+//    }
+//}
+
+impl fmt::Display for Question {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "{}, title: {}, content: {}, tags: {:?}",
+            self.id, self.title, self.content, self.tags
+        )
+    }
+}
+
+impl fmt::Display for QuestionId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "id: {}", self.0)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+struct AnswerId(String);
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct Answer {
+    id: AnswerId,
+    content: String,
+    question_id: QuestionId,
+}
+
+impl fmt::Display for AnswerId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "id: {}", self.0)
+    }
+}
+
+impl fmt::Display for Answer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "id: {}, content: {}", self.id, self.content)
+    }
+}
+
+//impl fmt::Debug for Question {
+//    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+//        write!(f, "{:?}", self.tags)
+//    }
+//}
+
+//impl FromStr for QuestionId {
+//    type Err = Error;
+//
+//    fn from_str(id: &str) -> Result<Self, Self::Err> {
+//        match id.is_empty() {
+//            false => Ok(QuestionId(id.to_string())),
+//            true => Err(Error::new(ErrorKind::InvalidInput, "No id provided")),
+//        }
+//    }
+//}
+
+#[derive(Debug)]
+struct InvalidId;
+
+impl Reject for InvalidId {}
+
+//async fn get_questions() -> Result<impl Reply, Rejection> {
+//let question = Question::new(
+//    QuestionId::from_str("1").expect("No id provided"),
+//    "First question".to_string(),
+//    "Content of question 1".to_string(),
+//    Some(vec!["faq".to_string(), "rust".to_string()]),
+//);
+
+//match question.id.0.parse::<i32>() {
+//    Ok(_) => Ok(warp::reply::json(&question)),
+//    Err(_) => Err(warp::reject::custom(InvalidId)),
+//}
+//}
+
+fn extract_pagination(params: HashMap<String, String>) -> Result<Pagination, Error> {
+    if params.contains_key("start") && params.contains_key("end") {
+        let start = params
+            .get("start")
+            .unwrap()
+            .parse::<usize>()
+            .map_err(Error::ParseError)?;
+        let end = params
+            .get("end")
+            .unwrap()
+            .parse::<usize>()
+            .map_err(Error::ParseError)?;
+
+        if start <= end {
+            return Ok(Pagination { start, end });
+        } else {
+            return Err(Error::IndexError);
+        }
+    }
+
+    Err(Error::MissingParameters)
+}
+
+async fn get_questions(
+    params: HashMap<String, String>,
+    store: Store,
+) -> Result<impl Reply, Rejection> {
+    let mut res: Vec<Question> = store.questions.read().values().cloned().collect();
+
+    if !params.is_empty() {
+        let page = extract_pagination(params)?;
+        let mut end = page.end;
+        if page.start > res.len() {
+            //return Err(Error::IndexError.into());
+            return Err(warp::reject::custom(Error::IndexError));
+        }
+
+        if page.end > res.len() {
+            end = res.len();
+        }
+        res = res[page.start - 1..end].to_vec();
+    }
+
+    Ok(warp::reply::json(&res))
+}
+
+async fn get_question(id: String, store: Store) -> Result<impl Reply, Rejection> {
+    match store.questions.read().get(&QuestionId(id)) {
+        Some(q) => Ok(warp::reply::json(&q)),
+        None => Err(warp::reject::custom(Error::QuestionNotFound)),
+    }
+}
+
+async fn add_question(store: Store, question: Question) -> Result<impl Reply, Rejection> {
+    store
+        .questions
+        .write()
+        .insert(question.id.clone(), question);
+
+    Ok(warp::reply::with_status("Question added", StatusCode::OK))
+}
+
+async fn update_question(
+    id: String,
+    store: Store,
+    question: Question,
+) -> Result<impl Reply, Rejection> {
+    match store.questions.write().get_mut(&QuestionId(id.clone())) {
+        Some(q) => *q = question,
+        None => return Err(warp::reject::custom(Error::QuestionNotFound)),
+    }
+
+    Ok(warp::reply::with_status("Question updated", StatusCode::OK))
+
+    //let redirect = format!("/questions/{id}");
+    //let resp = Response::builder()
+    //    .status(302)
+    //    .header("Location", redirect)
+    //    .body("Redirecting...")
+    //    .unwrap();
+
+    //Ok(resp)
+}
+
+async fn delete_question(id: String, store: Store) -> Result<impl Reply, Rejection> {
+    match store.questions.write().remove(&QuestionId(id)) {
+        Some(_) => Ok(warp::reply::with_status("Question deleted", StatusCode::OK)),
+        None => Err(warp::reject::custom(Error::QuestionNotFound)),
+    }
+}
+
+async fn add_answer(
+    params: HashMap<String, String>,
+    store: Store,
+) -> Result<impl Reply, Rejection> {
+    let answer = Answer {
+        id: AnswerId("1".to_string()),
+        content: params.get("content").unwrap().to_string(),
+        question_id: QuestionId(params.get("questionId").unwrap().to_string()),
+    };
+
+    store.answers.write().insert(answer.id.clone(), answer);
+
+    Ok(warp::reply::with_status("Answer added", StatusCode::OK))
+}
+
+async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
+    println!("{:?}", r);
+
+    if let Some(err) = r.find::<Error>() {
+        Ok(warp::reply::with_status(
+            err.to_string(),
+            StatusCode::RANGE_NOT_SATISFIABLE,
+        ))
+    } else if let Some(err) = r.find::<CorsForbidden>() {
+        Ok(warp::reply::with_status(
+            err.to_string(),
+            StatusCode::FORBIDDEN,
+        ))
+    //} else if let Some(_) = r.find::<InvalidId>() {
+    //    Ok(warp::reply::with_status(
+    //        "No valid ID presented".to_string(),
+    //        StatusCode::UNPROCESSABLE_ENTITY,
+    //    ))
+    } else if let Some(err) = r.find::<BodyDeserializeError>() {
+        Ok(warp::reply::with_status(
+            err.to_string(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ))
+    } else {
+        Ok(warp::reply::with_status(
+            "Route not found".to_string(),
+            StatusCode::NOT_FOUND,
+        ))
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let statics = warp::fs::dir("statics");
+
+    let store = Store::new();
+    let store_filter = warp::any().map(move || store.clone());
+
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_header("content-type")
+        //.allow_header("not-in-the-request")
+        .allow_methods(&[Method::PUT, Method::DELETE, Method::GET, Method::POST]);
+
+    let get_questions = warp::get()
+        .and(warp::path("questions"))
+        .and(warp::path::end())
+        .and(warp::query())
+        .and(store_filter.clone())
+        .and_then(get_questions);
+
+    let get_question = warp::get()
+        .and(warp::path("questions"))
+        .and(warp::path::param::<String>())
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and_then(get_question);
+
+    let add_question = warp::post()
+        .and(warp::path("questions"))
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and(warp::body::json())
+        .and_then(add_question);
+
+    let update_question = warp::put()
+        .and(warp::path("questions"))
+        .and(warp::path::param::<String>())
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and(warp::body::json())
+        .and_then(update_question);
+
+    let delete_question = warp::delete()
+        .and(warp::path("questions"))
+        .and(warp::path::param::<String>())
+        //.and(warp::path!("questions/String"))
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and_then(delete_question);
+
+    let add_answer = warp::post()
+        .and(warp::path("answers"))
+        .and(warp::path::end())
+        .and(warp::body::form())
+        .and(store_filter.clone())
+        .and_then(add_answer);
+
+    let route = statics
+        .or(get_questions)
+        .or(get_question)
+        .or(add_question)
+        .or(update_question)
+        .or(delete_question)
+        .or(add_answer)
+        .with(cors)
+        .recover(return_error);
+
+    warp::serve(route).run(([0, 0, 0, 0], 3030)).await;
+}

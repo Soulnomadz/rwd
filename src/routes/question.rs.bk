@@ -1,0 +1,95 @@
+use std::collections::HashMap;
+
+use crate::store::Store;
+use crate::types::question::{Question, QuestionId};
+use crate::types::pagination::extract_pagination;
+use handle_errors::Error;
+
+use warp::{
+  Filter, Rejection, Reply,
+  http::StatusCode,
+};
+
+//use log::info;
+use tracing::{instrument, info};
+
+#[instrument]
+pub async fn get_questions(
+    params: HashMap<String, String>,
+    store: Store,
+    //id: String,
+) -> Result<impl Reply, Rejection> {
+    //info!("{} Start querying questions ...", id);
+    info!("querying questions ...");
+
+    let mut res: Vec<Question> = store.questions.read().values().cloned().collect();
+
+    if !params.is_empty() {
+        let page = extract_pagination(params)?;
+	info!(page = true);
+
+        let mut end = page.end;
+        if page.start > res.len() {
+            //return Err(Error::IndexError.into());
+            return Err(warp::reject::custom(Error::IndexError));
+        }
+
+        if page.end > res.len() {
+            end = res.len();
+        }
+        res = res[page.start - 1..end].to_vec();
+    } else {
+	info!(page = false);
+    }
+
+    Ok(warp::reply::json(&res))
+}
+
+pub async fn get_question(id: i32, store: Store) -> Result<impl Reply, Rejection> {
+    match store.questions.read().get(&QuestionId(id)) {
+        Some(q) => Ok(warp::reply::json(&q)),
+        None => Err(warp::reject::custom(Error::QuestionNotFound)),
+    }
+}
+
+pub async fn add_question(store: Store, question: Question) -> Result<impl Reply, Rejection> {
+    store
+        .questions
+        .write()
+        .insert(question.id.clone(), question);
+
+    Ok(warp::reply::with_status("Question added", StatusCode::OK))
+}
+
+pub async fn update_question(
+    id: i32,
+    store: Store,
+    question: Question,
+) -> Result<impl Reply, Rejection> {
+    match store.questions.write().get_mut(&QuestionId(id.clone())) {
+        Some(q) => *q = question,
+        None => return Err(warp::reject::custom(Error::QuestionNotFound)),
+    }
+
+    Ok(warp::reply::with_status("Question updated", StatusCode::OK))
+
+    //let redirect = format!("/questions/{id}");
+    //let resp = Response::builder()
+    //    .status(302)
+    //    .header("Location", redirect)
+    //    .body("Redirecting...")
+    //    .unwrap();
+
+    //Ok(resp)
+}
+
+
+pub async fn delete_question(id: i32, store: Store) -> Result<impl Reply, Rejection> {
+    match store.questions.write().remove(&QuestionId(id)) {
+        Some(_) => Ok(warp::reply::with_status("Question deleted", StatusCode::OK)),
+        None => Err(warp::reject::custom(Error::QuestionNotFound)),
+    }
+}
+
+
+
