@@ -36,6 +36,12 @@ impl fmt::Display for Error {
 
 impl Reject for Error {}
 
+impl From<SqlxError> for Error {
+    fn from(err: SqlxError) -> Self {
+	Error::DatabaseQueryError(err)
+    }
+}
+
 #[instrument]
 pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
     //if let Some(Error::DatabaseQueryError) = r.find() {

@@ -27,7 +27,7 @@ pub async fn get_questions(
 
     match store.get_questions(page.limit, page.offset).await {
         Ok(res) => Ok(warp::reply::json(&res)),
-        Err(e: SqlxError) => Err(warp::reject::custom(Error::DatabaseQueryError(e))),
+        Err(e) => Err(warp::reject::custom(Error::from(e))),
     }
 }
 
@@ -39,14 +39,14 @@ pub async fn get_question(
 
     match store.get_question(id).await {
         Ok(res) => Ok(warp::reply::json(&res)),
-        Err(e) => Err(warp::reject::custom(Error::DatabaseQueryError(e))),
+        Err(e) => Err(warp::reject::custom(Error::from(e))),
     }
 }
 
 pub async fn add_question(store: Store, question: NewQuestion) -> Result<impl Reply, Rejection> {
     match store.add_question(question).await {
         Ok(_) => Ok(warp::reply::with_status("Question added", StatusCode::OK)),
-        Err(e) => Err(warp::reject::custom(Error::DatabaseQueryError(e))),
+        Err(e) => Err(warp::reject::custom(Error::from(e))),
     }
 }
 
@@ -57,7 +57,7 @@ pub async fn update_question(
 ) -> Result<impl Reply, Rejection> {
     match store.update_question(question, id).await {
         Ok(res) => Ok(warp::reply::json(&res)),
-        Err(e) => Err(warp::reject::custom(Error::DatabaseQueryError(e))),
+        Err(e) => Err(warp::reject::custom(Error::from(e))),
     }
 }
 
@@ -67,6 +67,6 @@ pub async fn delete_question(id: i32, store: Store) -> Result<impl Reply, Reject
             format!("Question {} deleted", id),
             StatusCode::OK,
         )),
-        Err(e) => Err(warp::reject::custom(Error::DatabaseQueryError(e))),
+        Err(e) => Err(warp::reject::custom(Error::from(e))),
     }
 }
