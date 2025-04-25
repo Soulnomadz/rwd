@@ -80,8 +80,8 @@ impl Store {
 	}
     }
 
-    pub async fn add_question(&self, question: NewQuestion) -> Result<Question, sqlx::Error> {
-        sqlx::query(
+    pub async fn add_question(&self, question: NewQuestion) -> Result<Question, Error> {
+        match sqlx::query(
 	    "insert into questions (title, content, tags) values ($1, $2, $3) returning id, title, content, tags")
 	.bind(question.title)
 	.bind(question.content)
@@ -100,8 +100,8 @@ impl Store {
         self,
         question: Question,
         question_id: i32,
-    ) -> Result<Question, sqlx::Error> {
-        sqlx::query(
+    ) -> Result<Question, Error> {
+        match sqlx::query(
             "
 	    update questions set title = $1, content = $2, tags = $3 where id = $4 
 	    returning id, title, content, tags
@@ -121,7 +121,7 @@ impl Store {
         .await
     }
 
-    pub async fn delete_question(self, question_id: i32) -> Result<bool, sqlx::Error> {
+    pub async fn delete_question(self, question_id: i32) -> Result<bool, Error> {
         match sqlx::query(
             "
 	    delete from questions where id = $1
@@ -132,7 +132,10 @@ impl Store {
         .await
         {
             Ok(_) => Ok(true),
-            Err(e) => Err(e),
+            Err(e) => {
+                tracing::event!(tracing::Level::ERROR, "{:?}", e);
+                Err(Error::DatabaseQueryError)
+            }
         }
     }
 
@@ -155,7 +158,7 @@ impl Store {
             Ok(answer) => Ok(answer),
             Err(e) => {
                 tracing::event!(tracing::Level::ERROR, "{:?}", e);
-                Err(Error::DatabaseQueryError(e))
+                Err(Error::DatabaseQueryError)
             }
         }
     }
