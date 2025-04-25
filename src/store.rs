@@ -49,7 +49,7 @@ impl Store {
             Ok(questions) => Ok(questions),
             Err(e) => {
                 tracing::event!(tracing::Level::ERROR, "{:?}", e);
-                Err(Error::DatabaseQueryError(e))
+                Err(Error::DatabaseQueryError)
             }
         }
     }
@@ -69,13 +69,9 @@ impl Store {
 	.await
 	{
 	    Ok(question) => Ok(question),
-            //Err(sqlx::Error::RowNotFound) => {
-            //    tracing::event!(tracing::Level::ERROR, "row not found");
-	    //    Ok(Question::default())
-            //},
 	    Err(e) => {
                 tracing::event!(tracing::Level::ERROR, "{:?}", e);
-                Err(Error::DatabaseQueryError(e))
+                Err(Error::DatabaseQueryError)
 	    }
 	}
     }
@@ -94,6 +90,13 @@ impl Store {
 	})
 	.fetch_one(&self.connection)
 	.await
+	{
+            Ok(question) => Ok(question),
+            Err(e) => {
+                tracing::event!(tracing::Level::ERROR, "{:?}", e);
+                Err(Error::DatabaseQueryError)
+            }
+	}
     }
 
     pub async fn update_question(
@@ -119,6 +122,13 @@ impl Store {
         })
         .fetch_one(&self.connection)
         .await
+        {
+            Ok(questions) => Ok(questions),
+            Err(e) => {
+                tracing::event!(tracing::Level::ERROR, "{:?}", e);
+                Err(Error::DatabaseQueryError)
+            }
+        }
     }
 
     pub async fn delete_question(self, question_id: i32) -> Result<bool, Error> {
