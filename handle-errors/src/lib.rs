@@ -8,7 +8,7 @@ use warp::{
 };
 
 use tracing::{event, Level, instrument};
-//use sqlx::error::Error as SqlxError;
+use sqlx::error::Error as SqlxError;
 
 use std::fmt;
 
@@ -21,8 +21,7 @@ use std::fmt;
 pub enum Error {
     ParseError(std::num::ParseIntError),
     MissingParameters,
-    //DatabaseQueryError(SqlxError),
-    DatabaseQueryError,
+    DatabaseQueryError(SqlxError),
 }
 
 impl fmt::Display for Error {
@@ -30,30 +29,30 @@ impl fmt::Display for Error {
         match *self {
             Error::ParseError(ref err) => write!(f, "cannot parse parameter: {}", err),
             Error::MissingParameters => write!(f, "missing parameter"),
-	    Error::DatabaseQueryError => write!(f, "Database query error"),
+	    Error::DatabaseQueryError(ref err) => write!(f, "Query could not be executed: {}", err),
         }
     }
 }
 
 impl Reject for Error {}
 
-//impl From<SqlxError> for Error {
-//    fn from(err: SqlxError) -> Self {
-//	Error::DatabaseQueryError(err)
-//    }
-//}
+impl From<SqlxError> for Error {
+    fn from(err: SqlxError) -> Self {
+	Error::DatabaseQueryError(err)
+    }
+}
 
 #[instrument]
 pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
-    if let Some(Error::DatabaseQueryError) = r.find() {
-        event!(Level::ERROR, "Database query error");
+    //if let Some(Error::DatabaseQueryError) = r.find() {
+    //    event!(Level::ERROR, "Database query error");
 
-        Ok(warp::reply::with_status(
-            Error::DatabaseQueryError.to_string(),
-            StatusCode::UNPROCESSABLE_ENTITY,
-        ))
-    } else if let Some(err) = r.find::<Error>() {
-    //if let Some(err) = r.find::<Error>() {
+    //    Ok(warp::reply::with_status(
+    //        Error::DatabaseQueryError.to_string(),
+    //        StatusCode::UNPROCESSABLE_ENTITY,
+    //    ))
+    //} else if let Some(err) = r.find::<Error>() {
+    if let Some(err) = r.find::<Error>() {
 	event!(Level::ERROR, "{}", err);
 
         Ok(warp::reply::with_status(
