@@ -55,25 +55,23 @@ impl Store {
     }
 
     pub async fn get_question(&self, question_id: i32) -> Result<Question, Error> {
-	match sqlx::query(
-	    "select * from questions where id = $1",
-	)
-	.bind(question_id)
-	.map(|row: PgRow| Question {
-	    id: QuestionId(row.get("id")),
-	    title: row.get("title"),
-	    content: row.get("content"),
-	    tags: row.get("tags"),
-	})
-	.fetch_one(&self.connection)
-	.await
-	{
-	    Ok(question) => Ok(question),
-	    Err(e) => {
+        match sqlx::query("select * from questions where id = $1")
+            .bind(question_id)
+            .map(|row: PgRow| Question {
+                id: QuestionId(row.get("id")),
+                title: row.get("title"),
+                content: row.get("content"),
+                tags: row.get("tags"),
+            })
+            .fetch_one(&self.connection)
+            .await
+        {
+            Ok(question) => Ok(question),
+            Err(e) => {
                 tracing::event!(tracing::Level::ERROR, "{:?}", e);
                 Err(Error::DatabaseQueryError)
-	    }
-	}
+            }
+        }
     }
 
     pub async fn add_question(&self, question: NewQuestion) -> Result<Question, Error> {
@@ -105,10 +103,8 @@ impl Store {
         question_id: i32,
     ) -> Result<Question, Error> {
         match sqlx::query(
-            "
-	    update questions set title = $1, content = $2, tags = $3 where id = $4 
-	    returning id, title, content, tags
-	",
+            "update questions set title = $1, content = $2, tags = $3 where id = $4 
+	    returning id, title, content, tags",
         )
         .bind(question.title)
         .bind(question.content)
@@ -132,14 +128,10 @@ impl Store {
     }
 
     pub async fn delete_question(self, question_id: i32) -> Result<bool, Error> {
-        match sqlx::query(
-            "
-	    delete from questions where id = $1
-	",
-        )
-        .bind(question_id)
-        .execute(&self.connection)
-        .await
+        match sqlx::query("delete from questions where id = $1")
+            .bind(question_id)
+            .execute(&self.connection)
+            .await
         {
             Ok(_) => Ok(true),
             Err(e) => {
@@ -151,10 +143,8 @@ impl Store {
 
     pub async fn add_answer(&self, answer: NewAnswer) -> Result<Answer, Error> {
         match sqlx::query(
-            "
-	    insert into answer (content, question_id) values ($1, $2)
-	",
-        )
+            "insert into answers (content, question_id) values ($1, $2)
+	    returning id, content, question_id")
         .bind(answer.content)
         .bind(answer.question_id.0)
         .map(|row: PgRow| Answer {

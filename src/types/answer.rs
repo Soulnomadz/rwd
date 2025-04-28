@@ -5,7 +5,7 @@ use super::question::QuestionId;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
-pub struct AnswerId(pub String);
+pub struct AnswerId(pub i32);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Answer {

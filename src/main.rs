@@ -1,3 +1,4 @@
+mod profanity;
 mod routes;
 mod store;
 mod types;
@@ -7,7 +8,7 @@ use crate::routes::question::*;
 use store::Store;
 
 use handle_errors::return_error;
-use log::{error, info, warn};
+//use log::{error, info, warn};
 use tracing_subscriber::fmt::format::FmtSpan;
 use warp::{Filter, http::Method};
 
@@ -27,9 +28,9 @@ async fn main() {
         .with_span_events(FmtSpan::CLOSE)
         .init();
 
-    error!("Something ERROR, handle it now!");
-    info!("This is an info");
-    warn!("Warning info...");
+    //error!("Something ERROR, handle it now!");
+    //info!("This is an info");
+    //warn!("Warning info...");
 
     /*
     let log = warp::log::custom(|info| {
@@ -51,6 +52,12 @@ async fn main() {
     let statics = warp::fs::dir("statics");
 
     let store = Store::new("postgres://postgres:Asdf123$@localhost:5432/rustwebdev").await;
+
+    sqlx::migrate!()
+        .run(&store.clone().connection)
+        .await
+        .expect("Cannot run migration!");
+
     let store_filter = warp::any().map(move || store.clone());
 
     // used for log4rs

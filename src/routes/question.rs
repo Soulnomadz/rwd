@@ -1,8 +1,9 @@
 use crate::store::Store;
 use crate::types::pagination::{Pagination, extract_pagination};
 use crate::types::question::{NewQuestion, Question};
+use crate::profanity::check_profanity;
 
-use handle_errors::Error;
+//use handle_errors::Error;
 
 use std::collections::HashMap;
 
@@ -27,26 +28,39 @@ pub async fn get_questions(
 
     match store.get_questions(page.limit, page.offset).await {
         Ok(res) => Ok(warp::reply::json(&res)),
-        Err(e) => Err(warp::reject::custom(Error::from(e))),
+        Err(e) => Err(warp::reject::custom(e)),
     }
 }
 
-pub async fn get_question(
-  id: i32, 
-  store: Store,
-) -> Result<impl Reply, Rejection> {
+pub async fn get_question(id: i32, store: Store) -> Result<impl Reply, Rejection> {
     event!(target: "rwd", Level::INFO, "querying question with id: {}", id);
 
     match store.get_question(id).await {
         Ok(res) => Ok(warp::reply::json(&res)),
-        Err(e) => Err(warp::reject::custom(Error::from(e))),
+        Err(e) => Err(warp::reject::custom(e)),
     }
 }
 
 pub async fn add_question(store: Store, question: NewQuestion) -> Result<impl Reply, Rejection> {
+    let title = match check_profanity(question.title).await {
+	Ok(res) => res,
+	Err(e) => return Err(warp::reject::custom(e)),
+    };
+
+    let content = match check_profanity(question.content).await {
+	Ok(res) => res,
+	Err(e) => return Err(warp::reject::custom(e)),
+    };
+
+    let question = NewQuestion {
+	title, 
+	content,
+	tags: question.tags,
+    };
+
     match store.add_question(question).await {
         Ok(_) => Ok(warp::reply::with_status("Question added", StatusCode::OK)),
-        Err(e) => Err(warp::reject::custom(Error::from(e))),
+        Err(e) => Err(warp::reject::custom(e)),
     }
 }
 
@@ -55,9 +69,26 @@ pub async fn update_question(
     store: Store,
     question: Question,
 ) -> Result<impl Reply, Rejection> {
+    let title = match check_profanity(question.title).await {
+        Ok(res) => res,
+        Err(e) => return Err(warp::reject::custom(e)),
+    };
+
+    let content = match check_profanity(question.content).await {
+        Ok(res) => res,
+        Err(e) => return Err(warp::reject::custom(e)),
+    };
+
+    let question = Question {
+	id: question.id,
+        title,
+        content,
+        tags: question.tags,
+    };
+
     match store.update_question(question, id).await {
         Ok(res) => Ok(warp::reply::json(&res)),
-        Err(e) => Err(warp::reject::custom(Error::from(e))),
+        Err(e) => Err(warp::reject::custom(e)),
     }
 }
 
@@ -67,6 +98,6 @@ pub async fn delete_question(id: i32, store: Store) -> Result<impl Reply, Reject
             format!("Question {} deleted", id),
             StatusCode::OK,
         )),
-        Err(e) => Err(warp::reject::custom(Error::from(e))),
+        Err(e) => Err(warp::reject::custom(e)),
     }
 }
